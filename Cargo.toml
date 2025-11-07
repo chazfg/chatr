@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+borsh = { version = "1.5.7", features = ["bytes", "derive"] }
 bytes = "1.10.1"
 rustyline = "17.0.2"
 tokio = { version = "1.48.0", features = ["full"] }
