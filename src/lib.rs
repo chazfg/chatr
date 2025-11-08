@@ -78,7 +78,7 @@ impl ClientConnection {
         self,
         from_server_to_client: Sender<ChatrMessage>,
         mut to_server_from_client: Receiver<ChatrMessage>,
-        ct: CancellationToken,
+        _ct: CancellationToken,
     ) {
         let ClientConnection { stream, mut buf } = self;
         let (mut stream_reader, mut stream_writer) = stream.into_split();

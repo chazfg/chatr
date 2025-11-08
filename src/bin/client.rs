@@ -1,29 +1,26 @@
 use std::sync::Arc;
 
-use bytes::BytesMut;
 use chatr::{ChatrMessage, ClientConnection};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let mut stdin = tokio::io::stdin();
+    let stdin = tokio::io::stdin();
     let mut reader = tokio::io::BufReader::new(stdin);
     let mut stdout = tokio::io::stdout();
     let ct = CancellationToken::new();
     let mut line = String::new();
-    // stdout.write(b">> ").await.unwrap();
-    // let mut rl = DefaultEditor::new().unwrap();
     stdout.write_all(b"username?").await.unwrap();
-    stdout.flush().await;
+    stdout.flush().await.unwrap();
     let username = match reader.read_line(&mut line).await {
         Ok(0) => {
             eprintln!("can't do no username");
             return;
         }
-        Ok(n) => {
+        Ok(_) => {
             let username = std::mem::take(&mut line);
             if username.trim().is_empty() {
                 eprintln!("can't do no username");
@@ -42,12 +39,12 @@ async fn main() {
     spawn_rest(stdout, reader, line, s1, r2, ct.clone());
     client_conn.run(s2, r1, ct.clone());
 
-    tokio::signal::ctrl_c().await;
+    tokio::signal::ctrl_c().await.unwrap();
     ct.cancel();
 }
 
 fn spawn_rest(
-    mut stdout: tokio::io::Stdout,
+    stdout: tokio::io::Stdout,
     mut stdin: tokio::io::BufReader<tokio::io::Stdin>,
     mut read_buf: String,
     s1: Sender<ChatrMessage>,
@@ -61,7 +58,7 @@ fn spawn_rest(
             {
                 let mut lockout = astd.lock().await;
                 lockout.write_all(b">> ").await.unwrap();
-                lockout.flush().await;
+                lockout.flush().await.unwrap();
             }
             tokio::select! {
                 _= ct.cancelled() => {break}
@@ -93,7 +90,7 @@ fn spawn_rest(
                         .write_all(format!("{username}:{content}\n").as_bytes())
                         .await
                         .unwrap();
-                    lockout.flush().await;
+                    lockout.flush().await.unwrap();
                 }
                 ChatrMessage::Disconnect => break,
                 _ => panic!(),

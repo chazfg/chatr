@@ -5,7 +5,7 @@ use borsh::BorshDeserialize;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::{Mutex, mpsc},
+    sync::mpsc,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, instrument, trace};

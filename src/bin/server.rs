@@ -1,15 +1,9 @@
-use std::sync::Arc;
-
 use chatr::{
     ChatrMessage, ReceiverFromClient, SenderToServer, Username,
     chatroom::{AdminMsg, Chatroom, UnauthenticatedClient, process_client_login},
 };
-use tokio::{
-    net::TcpListener,
-    sync::{Mutex, mpsc},
-};
+use tokio::{net::TcpListener, sync::mpsc};
 use tokio_util::sync::CancellationToken;
-use tracing::info;
 
 #[tokio::main]
 async fn main() {
@@ -25,23 +19,15 @@ async fn main() {
         while let Some((user, msg)) = receiver_from_clients.recv().await {
             tracing::trace!("recv from {user} msg {msg:?}");
             match msg {
-                ChatrMessage::SentMessage { content } => {
-                    admin_send_one
-                        .send(AdminMsg::DispatchMsg(user, content))
-                        .await
-                        .unwrap()
-                    // chatroom_one.lock().await.dispatch_msg(user, content).await;
-                }
+                ChatrMessage::SentMessage { content } => admin_send_one
+                    .send(AdminMsg::DispatchMsg(user, content))
+                    .await
+                    .unwrap(),
                 ChatrMessage::Disconnect => {
                     admin_send_one
                         .send(AdminMsg::RemoveClient(user))
                         .await
                         .unwrap();
-                    // let maybe_stc = chatroom_one.lock().await.remove_client(user).await;
-                    // if let Some((cancel_token, stc)) = maybe_stc {
-                    //     stc.send(ChatrMessage::Disconnect).await.unwrap();
-                    //     cancel_token.cancel();
-                    // }
                 }
                 _ => (),
             }
@@ -75,10 +61,7 @@ async fn main() {
                 .send(AdminMsg::AddClient(user, client_send))
                 .await
                 .unwrap();
-            // });
-
-            // tokio::spawn(async move { process_socket(socket, msg_tx).await });
         }
     });
-    tokio::signal::ctrl_c().await;
+    tokio::signal::ctrl_c().await.unwrap();
 }
