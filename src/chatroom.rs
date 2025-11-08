@@ -21,6 +21,14 @@ pub enum AdminMsg {
 pub struct Chatroom {
     clients: HashMap<Username, (CancellationToken, SenderToClient)>,
 }
+pub async fn send_to_clients(
+    clients: &mut HashMap<Username, (CancellationToken, SenderToClient)>,
+    msg: ChatrMessage,
+) {
+    for (_, (_, stc)) in clients.iter_mut() {
+        stc.send(msg.clone()).await.unwrap()
+    }
+}
 impl Chatroom {
     pub fn run(self, mut rx: mpsc::Receiver<AdminMsg>) {
         let Self { mut clients } = self;
@@ -29,17 +37,18 @@ impl Chatroom {
             while let Some(msg) = rx.recv().await {
                 match msg {
                     AdminMsg::AddClient(username, sender) => {
-                        clients.insert(username, (ct.clone(), sender));
+                        clients.insert(username.clone(), (ct.clone(), sender));
+                        send_to_clients(&mut clients, ChatrMessage::UserConnected { username })
+                            .await;
                     }
                     AdminMsg::RemoveClient(username) => {
                         clients.remove(&username);
+                        send_to_clients(&mut clients, ChatrMessage::UserDisconnected { username })
+                            .await;
                     }
                     AdminMsg::DispatchMsg(username, content) => {
                         let msg = ChatrMessage::ReceivedMessage { username, content };
-
-                        for (_, (_, stc)) in clients.iter_mut() {
-                            stc.send(msg.clone()).await.unwrap()
-                        }
+                        send_to_clients(&mut clients, msg).await;
                     }
                 }
             }

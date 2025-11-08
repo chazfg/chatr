@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use chatr::{ChatrMessage, ClientConnection};
+use chatr::ChatrMessage;
+use chatr::client::ClientConnection;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -88,6 +89,22 @@ fn spawn_rest(
                     let mut lockout = arc_stdout.lock().await;
                     lockout
                         .write_all(format!("{username}:{content}\n").as_bytes())
+                        .await
+                        .unwrap();
+                    lockout.flush().await.unwrap();
+                }
+                ChatrMessage::UserDisconnected { username } => {
+                    let mut lockout = arc_stdout.lock().await;
+                    lockout
+                        .write_all(format!("{username} disconnected\n").as_bytes())
+                        .await
+                        .unwrap();
+                    lockout.flush().await.unwrap();
+                }
+                ChatrMessage::UserConnected { username } => {
+                    let mut lockout = arc_stdout.lock().await;
+                    lockout
+                        .write_all(format!("{username} connected\n").as_bytes())
                         .await
                         .unwrap();
                     lockout.flush().await.unwrap();

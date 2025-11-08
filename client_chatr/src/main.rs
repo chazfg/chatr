@@ -1,16 +1,19 @@
 use std::{io, vec};
 
-use chatr::{ChatrMessage, ClientConnection, Content, Username};
+use chatr::{ChatrMessage, Content, Username, client::ClientConnection};
 use crossterm::event::{self, Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{Constraint, Layout, Rect, Spacing},
+    layout::{Constraint, Layout, Margin, Rect, Spacing},
     style::{Color, Style, Styled, Stylize},
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, List, ListDirection, Widget},
+    widgets::{
+        Block, List, ListDirection, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        StatefulWidget, Widget,
+    },
 };
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
@@ -36,34 +39,69 @@ enum KeyEventSideEffect {
     SendMessage(String),
 }
 
-#[derive(Debug, Default)]
-struct Message {
-    username: Username,
-    content: Content,
+#[derive(Debug)]
+enum BoardPost {
+    Message {
+        username: Username,
+        content: Content,
+    },
+    Connected(Username),
+    Disconnected(Username),
 }
-impl Message {
+impl BoardPost {
     fn list_item(&self) -> String {
-        format!("{}: {}", self.username, self.content)
+        match self {
+            BoardPost::Message { username, content } => todo!(),
+            BoardPost::Connected(_) => todo!(),
+            BoardPost::Disconnected(_) => todo!(),
+        }
+        // format!("{}: {}", self.username, self.content)
+    }
+    fn as_line(&self) -> Line {
+        match self {
+            BoardPost::Message { username, content } => {
+                Line::from(format!("{username}: {content}"))
+            }
+            BoardPost::Connected(user) => Line::from(format!("{user} connected").italic()),
+            BoardPost::Disconnected(user) => Line::from(format!("{user} disconnected").italic()),
+        }
     }
 }
 
-impl Widget for &Message {
+impl Widget for &BoardPost {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        Line::from(format!("{}: {}", self.username, self.content)).render(area, buf);
+        match self {
+            BoardPost::Message { username, content } => {
+                Line::from(format!("{username}: {content}")).render(area, buf);
+            }
+            BoardPost::Connected(user) => {
+                Line::from(format!("{user} connected").italic()).render(area, buf);
+            }
+            BoardPost::Disconnected(user) => {
+                Line::from(format!("{user} disconnected").italic()).render(area, buf);
+            }
+        }
     }
 }
 
 #[derive(Debug, Default)]
 struct MessageBoard {
-    messages: Vec<Message>,
+    messages: Vec<BoardPost>,
+    scrollbar: ScrollbarState,
 }
 
 impl MessageBoard {
-    pub fn post(&mut self, username: String, content: String) {
-        self.messages.push(Message { username, content });
+    pub fn user_disconnected(&mut self, username: String) {
+        self.messages.push(BoardPost::Disconnected(username));
+    }
+    pub fn user_connected(&mut self, username: String) {
+        self.messages.push(BoardPost::Connected(username));
+    }
+    pub fn post_message(&mut self, username: String, content: String) {
+        self.messages.push(BoardPost::Message { username, content });
     }
 }
 
@@ -72,14 +110,34 @@ impl Widget for &MessageBoard {
     where
         Self: Sized,
     {
-        let list = List::new(self.messages.iter().map(|m| m.list_item()))
-            .block(Block::bordered().title(" Chatr "))
-            .style(Style::new().white())
-            .highlight_style(Style::new().italic())
-            .highlight_symbol(">>")
-            .repeat_highlight_symbol(true)
-            .direction(ListDirection::TopToBottom);
-        list.render(area, buf);
+        let items: Vec<Line> = self.messages.iter().map(|m| m.as_line()).collect();
+
+        let mut scrollbar_state = ScrollbarState::new(items.len())
+            .viewport_content_length(15)
+            .position(0);
+        let pg = Paragraph::new(items).scroll((0 as u16, 0));
+        // Note we render the paragraph
+        pg.render(area, buf);
+        // and the scrollbar, those are separate widgets
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+        scrollbar.render(
+            area.inner(Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            buf,
+            &mut scrollbar_state,
+        );
+        // let list = List::new(self.messages.iter().map(|m| m.list_item()))
+        //     .block(Block::bordered().title(" Chatr "))
+        //     .style(Style::new().white())
+        //     .highlight_style(Style::new().italic())
+        //     .highlight_symbol(">>")
+        //     .repeat_highlight_symbol(true)
+        //     .direction(ListDirection::TopToBottom);
+        // list.render(area, buf);
     }
 }
 
@@ -403,7 +461,9 @@ impl App {
             },
             new_msg = new_messages.recv() => {
                 match new_msg {
-                    Some(ChatrMessage::ReceivedMessage { username, content }) => self.message_board.post(username, content),
+                    Some(ChatrMessage::ReceivedMessage { username, content }) => self.message_board.post_message(username, content),
+                    Some(ChatrMessage::UserConnected{username}) => self.message_board.user_connected(username),
+                    Some(ChatrMessage::UserDisconnected{username}) => self.message_board.user_disconnected(username),
                     None => todo!(),
                     x => todo!("{x:?}"),
                 }
