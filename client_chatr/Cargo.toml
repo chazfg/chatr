@@ -1,0 +1,13 @@
+[package]
+name = "client_chatr"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+color-eyre = "0.6.5"
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+ratatui = "0.29.0"
+chatr = { path = "../" }
+tokio = { version = "1.48.0", features = ["full"] }
+futures = "0.3.31"
+tokio-util = { version = "0.7.17", features = ["full"] }
