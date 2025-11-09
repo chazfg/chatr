@@ -7,12 +7,14 @@ use ratatui::{
     widgets::{Block, Widget},
 };
 
+/// Handles input/events for typing
 #[derive(Debug, Default)]
 pub struct TextBox {
     buffer: String,
     cursor: Cursor,
     selected: bool,
 }
+/// Little square to show where text will get placed/deleted from a TextBox
 #[derive(Debug, Default)]
 pub struct Cursor {
     position: u16,
@@ -100,6 +102,7 @@ impl TextBox {
     }
 }
 
+/// TextBox, but with a title
 #[derive(Debug, Default)]
 pub struct TitledTextBox {
     text_box: TextBox,

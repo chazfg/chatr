@@ -13,12 +13,17 @@ use tracing::{info, instrument, trace};
 
 use crate::{ChatrMessage, Content, ReceiverFromServer, SenderToClient, SenderToServer, Username};
 
+/// Messages to manage different chatroom aspects
 pub enum AdminMsg {
+    /// Add a client/user to the chatroom
     AddClient(Username, SenderToClient),
+    /// Remove a client/user from the chatroom
     RemoveClient(Username),
+    /// Send a message to all clients
     DispatchMsg(Username, Content),
 }
 #[derive(Default, Debug)]
+/// Representation of the server chatroom
 pub struct Chatroom {
     clients: HashMap<Username, (CancellationToken, SenderToClient)>,
 }
@@ -122,6 +127,7 @@ pub enum ClientLoginResult {
 }
 
 #[derive(Debug)]
+/// Client that has been allowed to connect to the server
 pub struct AuthenticatedClient {
     socket: TcpStream,
     buf: bytes::BytesMut,
@@ -206,6 +212,7 @@ impl AuthenticatedClient {
     }
 }
 #[derive(Debug)]
+/// Newly received client wanting to connect
 pub struct UnauthenticatedClient(TcpStream, bytes::BytesMut);
 impl UnauthenticatedClient {
     pub fn new(stream: TcpStream) -> Self {
@@ -237,9 +244,4 @@ impl UnauthenticatedClient {
             username,
         }
     }
-}
-
-pub enum LoginFlowResult {
-    Accept(String),
-    Reject(String),
 }

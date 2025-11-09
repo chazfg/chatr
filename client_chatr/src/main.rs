@@ -32,13 +32,17 @@ async fn main() -> io::Result<()> {
     result
 }
 
+/// Chat client app state
 #[derive(Debug, Default)]
 struct App {
+    /// Where received messages get displayed
     message_board: MessageBoard,
+    /// Where use writes messages
     buffer: TextBox,
     exit: bool,
 }
 
+/// Displays events and messages received from chatroom
 #[derive(Debug, Default)]
 struct MessageBoard {
     messages: Vec<BoardPost>,
@@ -116,6 +120,7 @@ impl Widget for &Button {
     }
 }
 
+/// State and widget used to handle 'login'
 #[derive(Debug)]
 struct LoginFlow {
     username: TitledTextBox,

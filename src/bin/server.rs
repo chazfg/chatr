@@ -1,8 +1,4 @@
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::HashSet, path::Path, sync::Arc};
 
 use chatr::{
     ChatrMessage, ReceiverFromClient, SenderToServer, Username,
@@ -20,9 +16,11 @@ struct ServerArgs {
     banned_usernames: Option<String>,
 }
 
+/// Server binary
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
+    // Get clargs
     let ServerArgs {
         banned_usernames,
         host,
@@ -39,13 +37,18 @@ async fn main() {
         }
         None => HashSet::default(),
     });
+
+    // Bind to host, create chatroom
     let server = TcpListener::bind(host).await.unwrap();
     let chatroom = Chatroom::new();
+    // Channels for comms
     let (sender_to_chatroom, mut receiver_from_clients): (SenderToServer, ReceiverFromClient) =
         mpsc::channel::<(Username, ChatrMessage)>(1024);
     let (admin_send, admin_recv) = mpsc::channel::<AdminMsg>(1024);
+    // Run chatroom
     chatroom.run(admin_recv);
     let admin_send_one = admin_send.clone();
+    // Fan in listener for all clients/users
     tokio::spawn(async move {
         while let Some((user, msg)) = receiver_from_clients.recv().await {
             tracing::trace!("recv from {user} msg {msg:?}");
@@ -64,6 +67,7 @@ async fn main() {
             }
         }
     });
+    // Socket listener accepting new connections
     tokio::spawn(async move {
         loop {
             let (socket, addr) = server.accept().await.unwrap();
@@ -103,6 +107,7 @@ async fn main() {
             new_client.login_accepted().await.unwrap();
             let (client_send, client_recv) = mpsc::channel(1024);
             tracing::debug!("run {user}");
+            // Client spawned when verified
             new_client.run(send_link, client_recv, CancellationToken::new());
             admin_send
                 .send(AdminMsg::AddClient(user, client_send))

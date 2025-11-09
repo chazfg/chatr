@@ -12,6 +12,7 @@ use tracing::instrument;
 
 use crate::{ChatrMessage, Username};
 
+/// Struct used by clients to represent the connection to the server
 pub struct ClientConnection {
     pub stream: TcpStream,
     pub buf: bytes::BytesMut,
@@ -24,6 +25,7 @@ impl ClientConnection {
             buf: BytesMut::zeroed(1024),
         })
     }
+
     pub async fn login(&mut self, username: Username) -> io::Result<()> {
         self.stream
             .write_all(

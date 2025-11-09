@@ -7,6 +7,7 @@ use ratatui::{
     widgets::Widget,
 };
 
+/// Any post that can get displayed on the MessageBoard
 #[derive(Debug)]
 pub enum BoardPost {
     Message {
@@ -17,7 +18,7 @@ pub enum BoardPost {
     Disconnected(Username),
 }
 impl BoardPost {
-    pub fn as_text(&self) -> Text {
+    pub fn as_text(&self) -> Text<'_> {
         match self {
             BoardPost::Message { username, content } => {
                 // Text::from(format!("{username}: {content}"))
