@@ -11,14 +11,10 @@
 ### Running the server
 
 ```sh
-cargo run --bin server
+cargo run --bin server -- [HOST] [BANNED_USERNAMES]
 ```
 
-### Running the terminal client
-
-```sh
-cargo run --bin client
-```
+banned_usernames can be a path to a file containing comma delimited usernames or just a comma delimited list inline
 
 ### Running the TUI client
 
