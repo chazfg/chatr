@@ -1,15 +1,46 @@
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
 use chatr::{
     ChatrMessage, ReceiverFromClient, SenderToServer, Username,
-    chatroom::{AdminMsg, Chatroom, UnauthenticatedClient, process_client_login},
+    chatroom::{
+        AdminMsg, Chatroom, ClientLoginResult, UnauthenticatedClient, process_client_login,
+    },
 };
-use tokio::{net::TcpListener, sync::mpsc};
+use clap::Parser;
+use tokio::{io::AsyncWriteExt, net::TcpListener, sync::mpsc};
 use tokio_util::sync::CancellationToken;
+
+#[derive(clap::Parser, Debug, Clone)]
+struct ServerArgs {
+    host: String,
+    banned_usernames: Option<String>,
+}
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let server = TcpListener::bind("localhost:1999").await.unwrap();
-    let chatroom = Chatroom::default();
+    let ServerArgs {
+        banned_usernames,
+        host,
+    } = ServerArgs::parse();
+    let banned_usernames: Arc<HashSet<String>> = Arc::new(match banned_usernames {
+        Some(string) => {
+            let as_path = Path::new(&string);
+            if as_path.exists() {
+                let file_str = std::fs::read_to_string(as_path).unwrap();
+                HashSet::from_iter(file_str.split(",").map(|s| s.trim().to_string()))
+            } else {
+                HashSet::from_iter(string.split(",").map(|s| s.trim().to_string()))
+            }
+        }
+        None => HashSet::default(),
+    });
+    let server = TcpListener::bind(host).await.unwrap();
+    let chatroom = Chatroom::new();
     let (sender_to_chatroom, mut receiver_from_clients): (SenderToServer, ReceiverFromClient) =
         mpsc::channel::<(Username, ChatrMessage)>(1024);
     let (admin_send, admin_recv) = mpsc::channel::<AdminMsg>(1024);
@@ -36,17 +67,33 @@ async fn main() {
     tokio::spawn(async move {
         loop {
             let (socket, addr) = server.accept().await.unwrap();
-            // let chat_link = chatroom.clone();
             let send_link = sender_to_chatroom.clone();
             let admin_send = admin_send.clone();
-            // tokio::spawn(async move {
             tracing::debug!("new socket {}", addr);
-            let maybe_new_client = process_client_login(UnauthenticatedClient::new(socket)).await;
+            let maybe_new_client =
+                process_client_login(UnauthenticatedClient::new(socket), &banned_usernames).await;
             let mut new_client = match maybe_new_client {
-                Ok(yes) => {
-                    tracing::info!("adding client: {}", yes.username);
-                    yes
-                }
+                Ok(result) => match result {
+                    ClientLoginResult::Accept(authenticated_client) => {
+                        tracing::info!("adding client: {}", authenticated_client.username);
+                        authenticated_client
+                    }
+                    ClientLoginResult::Reject {
+                        mut socket,
+                        username,
+                    } => {
+                        socket
+                            .write_all(
+                                &borsh::to_vec(&ChatrMessage::LoginRejected {
+                                    reason: format!("{username} is not allowed"),
+                                })
+                                .unwrap(),
+                            )
+                            .await
+                            .unwrap();
+                        return;
+                    }
+                },
                 Err(e) => {
                     tracing::error!("fucked up {e}");
                     return;

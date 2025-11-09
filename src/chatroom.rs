@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
+use std::sync::Arc;
 
 use borsh::BorshDeserialize;
 use tokio::{
@@ -30,6 +31,11 @@ pub async fn send_to_clients(
     }
 }
 impl Chatroom {
+    pub fn new() -> Self {
+        Self {
+            clients: HashMap::new(),
+        }
+    }
     pub fn run(self, mut rx: mpsc::Receiver<AdminMsg>) {
         let Self { mut clients } = self;
         let ct = CancellationToken::new();
@@ -85,21 +91,34 @@ impl Chatroom {
 #[instrument(level = "debug", skip(new_client))]
 pub async fn process_client_login(
     mut new_client: UnauthenticatedClient,
-) -> io::Result<AuthenticatedClient> {
+    banned_usernames: &Arc<HashSet<String>>,
+) -> io::Result<ClientLoginResult> {
     let login_request = new_client.login_request().await?;
     info!(?login_request);
     let UnauthenticatedClient(socket, buf) = new_client;
     match login_request {
         ChatrMessage::LoginRequest { username } => {
-            trace!("verif login {username}");
-            Ok(AuthenticatedClient {
-                socket,
-                buf,
-                username,
-            })
+            if !banned_usernames.contains(&username) {
+                trace!("verif login {username}");
+                Ok(ClientLoginResult::Accept(AuthenticatedClient {
+                    socket,
+                    buf,
+                    username,
+                }))
+            } else {
+                Ok(ClientLoginResult::Reject { socket, username })
+            }
         }
         _ => todo!(),
     }
+}
+
+pub enum ClientLoginResult {
+    Accept(AuthenticatedClient),
+    Reject {
+        socket: TcpStream,
+        username: Username,
+    },
 }
 
 #[derive(Debug)]
