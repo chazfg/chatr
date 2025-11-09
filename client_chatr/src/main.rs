@@ -7,6 +7,7 @@ use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::{Constraint, Layout, Rect, Spacing},
+    style::{Color, Stylize},
     text::{Line, Text, ToLine},
     widgets::{
         Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
@@ -88,9 +89,43 @@ impl Widget for &MessageBoard {
 }
 
 #[derive(Debug)]
+struct Button {
+    text: String,
+    selected: bool,
+}
+impl Button {
+    pub fn unselect(&mut self) {
+        self.selected = false;
+    }
+    pub fn select(&mut self) {
+        self.selected = true;
+    }
+}
+
+impl Widget for &Button {
+    fn render(self, area: Rect, buf: &mut Buffer)
+    where
+        Self: Sized,
+    {
+        if self.selected {
+            Text::from(self.text.clone())
+                .bg(Color::White)
+                .fg(Color::Black)
+                .render(area, buf);
+        } else {
+            Text::from(self.text.clone())
+                .fg(Color::White)
+                .bg(Color::Black)
+                .render(area, buf);
+        }
+    }
+}
+
+#[derive(Debug)]
 struct LoginFlow {
     username: TitledTextBox,
     host: TitledTextBox,
+    submit_button: Button,
     exit: bool,
     selected_item: u8,
 }
@@ -104,6 +139,10 @@ impl Default for LoginFlow {
             host: TitledTextBox::title("host"),
             exit: Default::default(),
             selected_item: Default::default(),
+            submit_button: Button {
+                text: "Submit".to_string(),
+                selected: false,
+            },
         }
     }
 }
@@ -116,12 +155,14 @@ impl Widget for &LoginFlow {
         let row_constraints = vec![
             Constraint::Length(3),
             Constraint::Length(3),
+            Constraint::Length(3),
             Constraint::Fill(1),
         ];
         let horizontal = Layout::vertical(row_constraints).spacing(Spacing::Space(0));
         let rows = horizontal.split(area);
         self.username.render(rows[0], buf);
         self.host.render(rows[1], buf);
+        self.submit_button.render(rows[2], buf);
     }
 }
 impl LoginFlow {
@@ -142,6 +183,13 @@ impl LoginFlow {
     fn draw(&self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
     }
+    fn on_enter(&mut self) {
+        if self.selected_item == 2 {
+            self.exit()
+        } else {
+            self.select_down()
+        }
+    }
     async fn handle_events(&mut self, event_stream: &mut EventStream) -> io::Result<()> {
         match event_stream.next().await {
             Some(Ok(Event::Key(key_event))) if key_event.kind == KeyEventKind::Press => {
@@ -149,7 +197,7 @@ impl LoginFlow {
                     match key_event.code {
                         KeyCode::Up => self.select_up(),
                         KeyCode::Down => self.select_down(),
-                        KeyCode::Enter => self.exit(),
+                        KeyCode::Enter => self.on_enter(),
                         a => {
                             if self.selected_item == 0 {
                                 self.username.handle_key_code(a);
@@ -169,25 +217,39 @@ impl LoginFlow {
     }
 
     fn set_selection(&mut self) {
-        if self.selected_item == 0 {
-            self.username.select();
-            self.host.unselect();
-        } else {
-            self.username.unselect();
-            self.host.select();
+        match self.selected_item {
+            0 => {
+                self.username.select();
+                self.host.unselect();
+                self.submit_button.unselect();
+            }
+            1 => {
+                self.username.unselect();
+                self.host.select();
+                self.submit_button.unselect();
+            }
+            2 => {
+                self.username.unselect();
+                self.host.unselect();
+                self.submit_button.select();
+            }
+            _ => panic!(),
         }
     }
 
-    fn select_up(&mut self) {
-        self.selected_item = (self.selected_item + 1) % 2;
+    fn select_down(&mut self) {
+        self.selected_item += 1;
+        if self.selected_item == 3 {
+            self.selected_item = 0;
+        }
         self.set_selection();
     }
 
-    fn select_down(&mut self) {
+    fn select_up(&mut self) {
         if self.selected_item == 0 {
-            self.selected_item = 1;
+            self.selected_item = 2;
         } else {
-            self.selected_item = 0;
+            self.selected_item -= 1;
         }
         self.set_selection();
     }
