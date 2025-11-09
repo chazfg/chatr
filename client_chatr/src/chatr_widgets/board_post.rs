@@ -17,27 +17,25 @@ pub enum BoardPost {
     Disconnected(Username),
 }
 impl BoardPost {
-    fn list_item(&self) -> String {
-        match self {
-            BoardPost::Message { username, content } => todo!(),
-            BoardPost::Connected(_) => todo!(),
-            BoardPost::Disconnected(_) => todo!(),
-        }
-        // format!("{}: {}", self.username, self.content)
-    }
     pub fn as_text(&self) -> Text {
         match self {
             BoardPost::Message { username, content } => {
-                Text::from(format!("{username}: {content}"))
+                // Text::from(format!("{username}: {content}"))
+                Text::from(vec![
+                    Line::from(username.clone()).bold(),
+                    Line::from(": ".to_string()),
+                    Line::from(content.clone()),
+                ])
             }
             BoardPost::Connected(user) => Text::from(format!("{user} connected").italic()),
             BoardPost::Disconnected(user) => Text::from(format!("{user} disconnected").italic()),
         }
     }
-    fn as_line(&self) -> Line {
+
+    pub(crate) fn as_line(&self) -> Line<'_> {
         match self {
             BoardPost::Message { username, content } => {
-                Line::from(format!("{username}: {content}"))
+                Line::from(vec![username.clone().bold(), ": ".into(), content.into()])
             }
             BoardPost::Connected(user) => Line::from(format!("{user} connected").italic()),
             BoardPost::Disconnected(user) => Line::from(format!("{user} disconnected").italic()),

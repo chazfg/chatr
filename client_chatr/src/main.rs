@@ -8,7 +8,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect, Spacing},
     style::{Color, Stylize},
-    text::{Line, Text, ToLine},
+    text::{Line, Text},
     widgets::{
         Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
         StatefulWidget, Widget, Wrap,
@@ -69,20 +69,15 @@ impl Widget for &MessageBoard {
         let msgs = self
             .messages
             .iter()
-            .map(|m| m.as_text())
-            .collect::<Vec<Text>>();
-        let content_height = msgs.iter().map(|m| m.height() as u16).sum::<u16>();
-        // let para = Paragraph::new(msgs.iter().map(|m| m.to_line()).collect())
-        let para = Paragraph::new(msgs.iter().map(|m| m.to_line()).collect::<Vec<Line>>())
-            .block(block)
-            .wrap(Wrap { trim: false });
-        let view_height = inner.height;
+            .map(|m| m.as_line())
+            .collect::<Vec<Line>>();
+        let para = Paragraph::new(msgs).block(block).wrap(Wrap { trim: false });
+        let content_height = para.line_count(inner.width);
+        let view_height = inner.height as usize;
         let max_scroll = content_height.saturating_sub(view_height);
-        // if self.stick_to_bottom =
-        let para = para.scroll((max_scroll, 0));
+        let para = para.scroll((max_scroll as u16, 0));
         para.render(area, buf);
-        let mut sb_state =
-            ScrollbarState::new(content_height as usize).position(max_scroll as usize);
+        let mut sb_state = ScrollbarState::new(content_height).position(max_scroll);
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
         scrollbar.render(area, buf, &mut sb_state);
     }
@@ -336,9 +331,6 @@ impl App {
             }
 
         }
-
-        // match event::read()? {
-        // };
         Ok(())
     }
 }
