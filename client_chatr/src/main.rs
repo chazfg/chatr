@@ -1,22 +1,26 @@
 use std::{io, vec};
 
-use chatr::{ChatrMessage, Content, Username, client::ClientConnection};
-use crossterm::event::{self, Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use chatr::{ChatrMessage, client::ClientConnection};
+use crossterm::event::{self, Event, EventStream, KeyCode, KeyEventKind, KeyModifiers};
 use futures::StreamExt;
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{Constraint, Layout, Margin, Rect, Spacing},
-    style::{Color, Style, Styled, Stylize},
-    symbols::border,
-    text::{Line, Text},
+    layout::{Constraint, Layout, Rect, Spacing},
+    text::{Line, Text, ToLine},
     widgets::{
-        Block, List, ListDirection, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        StatefulWidget, Widget,
+        Block, BorderType, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        StatefulWidget, Widget, Wrap,
     },
 };
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
+
+use crate::chatr_widgets::{
+    board_post::BoardPost,
+    text_box::{TextBox, TitledTextBox},
+};
+pub mod chatr_widgets;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -34,63 +38,9 @@ struct App {
     exit: bool,
 }
 
-enum KeyEventSideEffect {
-    Exit,
-    SendMessage(String),
-}
-
-#[derive(Debug)]
-enum BoardPost {
-    Message {
-        username: Username,
-        content: Content,
-    },
-    Connected(Username),
-    Disconnected(Username),
-}
-impl BoardPost {
-    fn list_item(&self) -> String {
-        match self {
-            BoardPost::Message { username, content } => todo!(),
-            BoardPost::Connected(_) => todo!(),
-            BoardPost::Disconnected(_) => todo!(),
-        }
-        // format!("{}: {}", self.username, self.content)
-    }
-    fn as_line(&self) -> Line {
-        match self {
-            BoardPost::Message { username, content } => {
-                Line::from(format!("{username}: {content}"))
-            }
-            BoardPost::Connected(user) => Line::from(format!("{user} connected").italic()),
-            BoardPost::Disconnected(user) => Line::from(format!("{user} disconnected").italic()),
-        }
-    }
-}
-
-impl Widget for &BoardPost {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        match self {
-            BoardPost::Message { username, content } => {
-                Line::from(format!("{username}: {content}")).render(area, buf);
-            }
-            BoardPost::Connected(user) => {
-                Line::from(format!("{user} connected").italic()).render(area, buf);
-            }
-            BoardPost::Disconnected(user) => {
-                Line::from(format!("{user} disconnected").italic()).render(area, buf);
-            }
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 struct MessageBoard {
     messages: Vec<BoardPost>,
-    scrollbar: ScrollbarState,
 }
 
 impl MessageBoard {
@@ -110,127 +60,30 @@ impl Widget for &MessageBoard {
     where
         Self: Sized,
     {
-        let items: Vec<Line> = self.messages.iter().map(|m| m.as_line()).collect();
-
-        let mut scrollbar_state = ScrollbarState::new(items.len())
-            .viewport_content_length(15)
-            .position(0);
-        let pg = Paragraph::new(items).scroll((0 as u16, 0));
-        // Note we render the paragraph
-        pg.render(area, buf);
-        // and the scrollbar, those are separate widgets
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
-        scrollbar.render(
-            area.inner(Margin {
-                vertical: 1,
-                horizontal: 0,
-            }),
-            buf,
-            &mut scrollbar_state,
-        );
-        // let list = List::new(self.messages.iter().map(|m| m.list_item()))
-        //     .block(Block::bordered().title(" Chatr "))
-        //     .style(Style::new().white())
-        //     .highlight_style(Style::new().italic())
-        //     .highlight_symbol(">>")
-        //     .repeat_highlight_symbol(true)
-        //     .direction(ListDirection::TopToBottom);
-        // list.render(area, buf);
-    }
-}
-
-#[derive(Debug, Default)]
-struct TextBox {
-    buffer: String,
-    cursor: Cursor,
-    selected: bool,
-}
-#[derive(Debug, Default)]
-struct Cursor {
-    position: u16,
-    inverted: bool,
-}
-
-impl Cursor {
-    pub fn unselect(&mut self) {
-        self.inverted = false;
-    }
-    pub fn select(&mut self) {
-        self.inverted = true;
-    }
-    pub fn forward(&mut self) {
-        self.position += 1;
-    }
-    pub fn backward(&mut self) {
-        if self.position != 0 {
-            self.position -= 1;
-        }
-    }
-    pub fn position(&self) -> usize {
-        self.position as usize
-    }
-    pub fn reset(&mut self) {
-        self.position = 0;
-    }
-}
-
-impl TextBox {
-    pub fn unselect(&mut self) {
-        self.selected = false;
-        self.cursor.unselect();
-    }
-    pub fn select(&mut self) {
-        self.selected = true;
-        self.cursor.select();
-    }
-    pub fn is_empty(&mut self) -> bool {
-        self.buffer.is_empty()
-    }
-    pub fn take_buffer(&mut self) -> String {
-        self.cursor.reset();
-        std::mem::take(&mut self.buffer)
-    }
-    fn handle_key_code(&mut self, key_code: KeyCode) {
-        match key_code {
-            KeyCode::Char(c) => {
-                if self.cursor.position() == self.buffer.len() {
-                    self.buffer.push(c);
-                    self.cursor.forward();
-                } else {
-                    self.buffer.insert(self.cursor.position(), c);
-                    self.cursor.forward();
-                }
-            }
-            KeyCode::Backspace => {
-                if !self.buffer.is_empty() {
-                    if self.cursor.position() == self.buffer.len() {
-                        if self.buffer.pop().is_some() {
-                            self.cursor.backward()
-                        }
-                    } else if self.cursor.position() != 0 {
-                        self.buffer.remove(self.cursor.position() - 1);
-                        self.cursor.backward();
-                    }
-                }
-            }
-            KeyCode::Delete => {
-                if !self.buffer.is_empty() && self.cursor.position() != self.buffer.len() {
-                    self.buffer.remove(self.cursor.position());
-                }
-            }
-            KeyCode::Left => self.cursor.backward(),
-            KeyCode::Right => {
-                if self.cursor.position() < self.buffer.len() {
-                    self.cursor.forward()
-                }
-            }
-            _ => {}
-        }
-    }
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
-        self.handle_key_code(key_event.code);
+        let block = Block::default()
+            .title_top(" Chatr ")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Plain);
+        let inner = block.inner(area);
+        let msgs = self
+            .messages
+            .iter()
+            .map(|m| m.as_text())
+            .collect::<Vec<Text>>();
+        let content_height = msgs.iter().map(|m| m.height() as u16).sum::<u16>();
+        // let para = Paragraph::new(msgs.iter().map(|m| m.to_line()).collect())
+        let para = Paragraph::new(msgs.iter().map(|m| m.to_line()).collect::<Vec<Line>>())
+            .block(block)
+            .wrap(Wrap { trim: false });
+        let view_height = inner.height;
+        let max_scroll = content_height.saturating_sub(view_height);
+        // if self.stick_to_bottom =
+        let para = para.scroll((max_scroll, 0));
+        para.render(area, buf);
+        let mut sb_state =
+            ScrollbarState::new(content_height as usize).position(max_scroll as usize);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+        scrollbar.render(area, buf, &mut sb_state);
     }
 }
 
@@ -247,60 +100,11 @@ impl Default for LoginFlow {
         let mut user_text = TextBox::default();
         user_text.select();
         Self {
-            username: TitledTextBox {
-                text_box: user_text,
-                title: "username".to_string(),
-                selected: true,
-            },
-            host: TitledTextBox {
-                text_box: TextBox::default(),
-                title: "host".to_string(),
-                selected: false,
-            },
+            username: TitledTextBox::new(user_text, "username", true),
+            host: TitledTextBox::title("host"),
             exit: Default::default(),
             selected_item: Default::default(),
         }
-    }
-}
-
-#[derive(Debug, Default)]
-struct TitledTextBox {
-    text_box: TextBox,
-    title: String,
-    selected: bool,
-}
-impl TitledTextBox {
-    pub fn take_buffer(&mut self) -> String {
-        self.text_box.take_buffer()
-    }
-    pub fn unselect(&mut self) {
-        self.selected = false;
-        self.text_box.unselect();
-    }
-    pub fn select(&mut self) {
-        self.selected = true;
-        self.text_box.select();
-    }
-    pub fn handle_key_code(&mut self, key_code: KeyCode) {
-        self.text_box.handle_key_code(key_code);
-    }
-}
-impl Widget for &TitledTextBox {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        let block = if self.selected {
-            Block::new()
-                .title_top(self.title.clone())
-                .bg(Color::White)
-                .fg(Color::Black)
-        } else {
-            Block::new().title_top(self.title.clone())
-        };
-        let inner = block.inner(area);
-        block.render(area, buf);
-        self.text_box.render(inner, buf);
     }
 }
 
@@ -477,38 +281,6 @@ impl App {
     }
 }
 
-impl Widget for &TextBox {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        if self.selected {
-            Line::from(self.buffer.clone())
-                .bg(Color::White)
-                .fg(Color::Black)
-                .render(area, buf);
-            self.cursor.render(area, buf);
-        } else {
-            Line::from(self.buffer.clone()).render(area, buf);
-        }
-    }
-}
-impl Widget for &Cursor {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        if self.inverted {
-            buf[(area.x + self.position, area.y)]
-                .set_fg(Color::White)
-                .set_bg(Color::Black);
-        } else {
-            buf[(area.x + self.position, area.y)]
-                .set_bg(Color::White)
-                .set_fg(Color::Black);
-        }
-    }
-}
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let row_constraints = vec![Constraint::Fill(1), Constraint::Length(2)];
